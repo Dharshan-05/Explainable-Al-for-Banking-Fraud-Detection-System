@@ -46,7 +46,7 @@ class Settings(BaseSettings):
             self.COOKIE_SECURE = True
         return self
 
-    model_config = {"protected_namespaces": (), "env_file": ".env"}
+    model_config = {"protected_namespaces": (), "env_file": ".env", "extra": "ignore"}
 
 settings = Settings()
 
