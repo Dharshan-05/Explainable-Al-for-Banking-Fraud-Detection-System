@@ -1,0 +1,113 @@
+services:
+
+  # ─── Database ───────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: fraud_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB}
+      POSTGRES_USER:     ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis (Cache + Celery Broker) ───────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: fraud_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Backend API ─────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fraud_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SECRET_KEY:   ${SECRET_KEY}
+      DEBUG:        ${DEBUG}
+      REDIS_URL:    ${REDIS_URL}
+      PYTHONPATH:   /app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ─── Celery Worker ───────────────────────────────────────────
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fraud_celery_worker
+    restart: unless-stopped
+    command: celery -A worker worker --loglevel=info --concurrency=4
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SECRET_KEY:   ${SECRET_KEY}
+      REDIS_URL:    ${REDIS_URL}
+      PYTHONPATH:   /app
+    healthcheck:
+      disable: true
+
+  # ─── MLflow Tracking Server ───────────────────────────────────
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.10.2
+    container_name: fraud_mlflow
+    restart: unless-stopped
+    ports:
+      - "5001:5000"
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri /mlruns --default-artifact-root /mlruns
+    volumes:
+      - mlflow_data:/mlruns
+
+  # ─── Frontend ────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+        - NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+    container_name: fraud_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  mlflow_data:

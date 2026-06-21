@@ -1,0 +1,112 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: #06090f;
+  color: #f1f5f9;
+  font-family: 'Syne', 'Outfit', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0d1117; }
+::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #374151; }
+
+/* Page transition */
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+main { animation: pageIn 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* Selection */
+::selection { background: rgba(0, 212, 255, 0.2); color: #00d4ff; }
+
+/* Focus visible */
+:focus-visible { outline: 2px solid rgba(0, 212, 255, 0.5); outline-offset: 2px; border-radius: 4px; }
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  main {
+    margin-left: 0 !important;
+    max-width: 100vw !important;
+    padding: 72px 16px 24px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  main { padding: 64px 12px 20px !important; }
+}
+
+/* Smooth button hover */
+button { transition: all 0.2s ease; }
+button:active { transform: scale(0.97); }
+
+/* Link reset */
+a { color: inherit; }
+
+/* ===== NUCLEAR LIGHT MODE FIX ===== */
+html.light { background: #f0f4ff !important; color: #0f172a !important; }
+html.light body { background: #f0f4ff !important; }
+html.light main { background: #f0f4ff !important; }
+html.light aside { background: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
+
+/* Override ALL dark backgrounds */
+html.light div, html.light section, html.light nav, html.light table, html.light tbody, html.light thead, html.light tr, html.light td, html.light th {
+  border-color: #e2e8f0 !important;
+}
+
+/* Card backgrounds */
+html.light [style*="background:#0d1117"],
+html.light [style*="background: #0d1117"],
+html.light [style*="background:'#0d1117'"],
+html.light [style*="background:\"#0d1117\""] { background: #ffffff !important; }
+
+html.light [style*="background:#06090f"],
+html.light [style*="background: #06090f"] { background: #f0f4ff !important; }
+
+html.light [style*="background:#111827"],
+html.light [style*="background: #111827"] { background: #f1f5f9 !important; }
+
+html.light [style*="background:#0f1623"],
+html.light [style*="background: #0f1623"] { background: #e8edf5 !important; }
+
+html.light [style*="background:#1a2035"],
+html.light [style*="background: #1a2035"] { background: #f1f5f9 !important; }
+
+html.light [style*="background:#020609"],
+html.light [style*="background: #020609"] { background: #f0f4ff !important; }
+
+/* Text colors */
+html.light [style*="color:#e2e8f0"] { color: #1e293b !important; }
+html.light [style*="color:#f0f4ff"] { color: #0f172a !important; }
+html.light [style*="color:#f1f5f9"] { color: #0f172a !important; }
+html.light [style*="color:#9ca3af"] { color: #475569 !important; }
+html.light [style*="color:#6b7280"] { color: #64748b !important; }
+html.light [style*="color:#4b5563"] { color: #475569 !important; }
+html.light [style*="color:#374151"] { color: #64748b !important; }
+html.light [style*="color:#1f2937"] { color: #94a3b8 !important; }
+
+/* Inputs & selects */
+html.light input[type="text"],
+html.light input[type="number"],
+html.light input[type="email"],
+html.light input[type="password"],
+html.light select {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+/* Borders */
+html.light [style*="border:1px solid #1a2035"] { border: 1px solid #e2e8f0 !important; }
+html.light [style*="borderBottom:\"1px solid #111827\""] { border-bottom: 1px solid #e2e8f0 !important; }
+html.light [style*="borderRight:\"1px solid #0f1623\""] { border-right: 1px solid #e2e8f0 !important; }
+
+/* Table specific */
+html.light [style*="borderBottom:'1px solid #111827'"] { border-bottom-color: #e2e8f0 !important; }

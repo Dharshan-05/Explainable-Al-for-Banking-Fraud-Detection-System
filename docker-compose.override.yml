@@ -1,0 +1,15 @@
+services:
+  backend:
+    environment:
+      - DEBUG=true
+    volumes:
+      - ./backend:/app
+
+  celery_worker:
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
