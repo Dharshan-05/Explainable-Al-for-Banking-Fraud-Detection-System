@@ -17,7 +17,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# lib/ is too generic and incorrectly ignores frontend/lib/
+# lib/
 lib64/
 parts/
 sdist/
@@ -61,6 +62,9 @@ out/
 # ML artifacts
 *.pkl
 *.joblib
+!backend/ml/model.pkl
+!backend/ml/scaler.pkl
+!backend/ml/shap_explainer.pkl
 mlruns/
 
 # Database files
