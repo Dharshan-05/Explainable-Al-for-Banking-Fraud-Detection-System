@@ -35,7 +35,11 @@ describe('LoginPage Component', () => {
 
   afterEach(() => {
     // Restore window.location
-    window.location = originalLocation
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    })
   })
 
   it('renders login form inputs and submit button', () => {

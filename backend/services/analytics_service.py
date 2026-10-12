@@ -205,19 +205,57 @@ async def get_risk_distribution(db: AsyncSession) -> List[dict]:
 
 
 async def get_top_features(db: AsyncSession) -> List[dict]:
-    # Aggregate SHAP values from recent fraud transactions
+    # 1. Fetch recent fraud transactions (limit 100)
     result = await db.execute(
-        select(Transaction.top_features)
+        select(Transaction)
         .where(Transaction.is_fraud == True)
-        .where(Transaction.top_features != None)
+        .order_by(desc(Transaction.created_at))
         .limit(100)
     )
-    rows = result.scalars().all()
+    txns = result.scalars().all()
 
+    if not txns:
+        return []
+
+    # 2. Identify transactions that are missing top_features
+    missing_idx = []
+    input_list = []
+    for idx, txn in enumerate(txns):
+        # top_features can be None, or an empty list/string depending on database state
+        if not txn.top_features or txn.top_features == "[]":
+            missing_idx.append(idx)
+            # Reconstruct original feature dict for predict_batch
+            raw = {
+                "Amount": txn.amount,
+                "Time": txn.transaction_time,
+            }
+            if txn.v_features:
+                raw.update(txn.v_features)
+            input_list.append(raw)
+
+    # 3. Compute missing SHAP values on-the-fly and persist to database
+    if input_list:
+        try:
+            from ml.predict import predict_batch
+            shap_results = predict_batch(input_list, defer_shap=False)
+            for idx, res in zip(missing_idx, shap_results):
+                if res and "error" not in res:
+                    txn = txns[idx]
+                    txn.top_features = res["top_features"]
+                    txn.shap_values = res["all_shap_values"]
+                    txn.explanation = res["explanation"]
+                    db.add(txn)
+            await db.commit()
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to calculate missing SHAP values in analytics: {e}")
+
+    # 4. Aggregate feature stats from all 100 transactions
     feature_stats: Dict[str, List[float]] = {}
-    for row in rows:
-        if not row: continue
-        features = row if isinstance(row, list) else json.loads(row)
+    for txn in txns:
+        if not txn.top_features:
+            continue
+        features = txn.top_features if isinstance(txn.top_features, list) else json.loads(txn.top_features)
         for f in features:
             name = f.get("feature", "")
             val  = abs(f.get("shap_value", 0))

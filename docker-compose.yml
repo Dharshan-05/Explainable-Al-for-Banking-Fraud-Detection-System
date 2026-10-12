@@ -53,6 +53,8 @@ services:
       DEBUG:        ${DEBUG}
       REDIS_URL:    ${REDIS_URL}
       PYTHONPATH:   /app
+    volumes:
+      - uploads_data:/app/uploads
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 15s
@@ -78,6 +80,8 @@ services:
       SECRET_KEY:   ${SECRET_KEY}
       REDIS_URL:    ${REDIS_URL}
       PYTHONPATH:   /app
+    volumes:
+      - uploads_data:/app/uploads
     healthcheck:
       disable: true
 
@@ -111,3 +115,4 @@ services:
 volumes:
   postgres_data:
   mlflow_data:
+  uploads_data:

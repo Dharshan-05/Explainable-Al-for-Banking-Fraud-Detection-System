@@ -1,4 +1,4 @@
-# Walkthrough: Phase 9, 10, 11, 12 & 13 Security, Testing, Optimization, and Observability Setup
+# Walkthrough: Phase 9, 10, 11, 12, 13, 14 & 14.1 Implementation and Verification
 
 ## Overview
 This walkthrough summarizes the completed implementation and verification of:
@@ -7,8 +7,10 @@ This walkthrough summarizes the completed implementation and verification of:
 3. **Phase 11:** Frontend Testing Setup with Vitest and React Testing Library.
 4. **Phase 12:** Server-Side Streaming CSV Upload Optimization.
 5. **Phase 13:** Audit Logging and Observability Foundation.
+6. **Phase 14:** High-Throughput Fraud Batch Ingestion Optimization (Pandas Vectorization).
+7. **Phase 14.1:** Ultra-Fast PostgreSQL COPY Batch Ingestion Optimization.
 
-All changes have been successfully implemented on both the backend and frontend. The entire test suite containing 64 backend tests and 19 frontend unit/integration tests is passing, and the frontend builds cleanly without compilation issues.
+All changes have been successfully implemented on both the backend and frontend. The entire test suite containing 81 backend tests and 19 frontend unit/integration tests is passing, and the frontend builds cleanly without compilation issues.
 
 ---
 
@@ -27,11 +29,11 @@ All changes have been successfully implemented on both the backend and frontend.
 
 3. **`backend/api/routes/auth.py`**:
    - Updated `/login` to set `access_token` as an HttpOnly, secure, and samesite-configured cookie, and the `csrf_token` as a JavaScript-readable cookie.
-   - Updated `/logout` to delete/clear both the `access_token` and `csrf_token` cookies.
+   - Updated `/logout` to clear both cookies.
 
 4. **`backend/api/routes/ws.py`**:
-   - Updated `/alerts` WebSocket endpoint to retrieve the authentication token from `websocket.cookies` (removing query parameter token support entirely).
-   - Enforced authentication and role-based access checks (only `admin` and `analyst` allowed, rejecting `customer` role and closing with standard code `4003`; invalid/missing cookies close with code `4001`).
+   - Updated `/alerts` WebSocket endpoint to retrieve the authentication token from `websocket.cookies`.
+   - Enforced authentication and role-based access checks (only `admin` and `analyst` allowed, rejecting `customer` role with closure code `4003`; invalid/missing cookies close with code `4001`).
 
 ### Frontend
 
@@ -46,197 +48,129 @@ All changes have been successfully implemented on both the backend and frontend.
 
 ## Phase 10: Alembic Database Migration Setup Changes
 
-### Backend Configuration
-
-1. **`backend/requirements.txt`**:
-   - Added `alembic==1.13.1` dependency.
-
-2. **`backend/alembic.ini`**:
-   - Initialized Alembic configuration to support local development sys.path parsing (`prepend_sys_path = .`).
-
+1. **`backend/requirements.txt`**: Added `alembic==1.13.1` dependency.
+2. **`backend/alembic.ini`**: Configured Alembic with `prepend_sys_path = .`.
 3. **`backend/alembic/env.py`**:
-   - Customized the migration script to load settings dynamically from `backend/config.py`.
-   - Configured async SQLAlchemy migration runner (`run_async_migrations()`) to use `create_async_engine` configured with dynamic database credentials from settings.
-   - Automatically imports `Base` metadata and models `User` and `Transaction` to enable autogenerate schema revisions.
-   - Standardized dialect translation in offline mode (e.g. replacing `postgresql+asyncpg://` with `postgresql://`).
-
-4. **`backend/alembic/versions/f098f31714a4_initial_schema_setup.py`**:
-   - Created the initial schema migration script representing the actual database tables (`users`, `transactions`) and target indexes (`ix_transactions_created_at`, `ix_transactions_is_fraud`, `ix_transactions_risk_level`, `ix_transactions_status`, `ix_users_email`).
-
-### Startup Behavior
-
-1. **`backend/database/db.py`**:
-   - Refactored `create_tables()` to check settings and bypass table generation (`create_all`) in production environments (where `DEBUG=False` and `TESTING=False` on PostgreSQL), while keeping it enabled for dev/testing.
-
-2. **`backend/main.py`**:
-   - Updated `lifespan` startup to log table readiness only when `create_tables()` is run.
-
-### Documentation
-
-1. **`README.md`**:
-   - Added a new **Section 10: Database Migrations (Alembic)** documenting all key CLI commands (`alembic upgrade head`, `alembic current`, `alembic history`, `alembic revision --autogenerate`).
-   - Highlighted the production requirement to execute `alembic upgrade head` before launching the application container.
+   - Customized migration script to load settings dynamically from settings.
+   - Configured async engine using dynamic database credentials.
+   - Automatic model imports (User, Transaction, AuditLog).
+4. **`backend/database/db.py`**: Bypasses `create_all` in production, keeping it enabled only for dev/testing.
 
 ---
 
 ## Phase 11: Frontend Testing Setup with Vitest and React Testing Library
 
-### Configuration Created
-
-1. **`frontend/vitest.config.ts`**:
-   - Wired the Vitest config to use the `@vitejs/plugin-react` React plugin.
-   - Configured the test environment to `jsdom` for virtual DOM execution.
-   - Set up path mapping resolving `@/*` to the frontend root `./*`.
-   - Linked global mock behaviors via the `setupFiles: './test/setup.ts'` declaration.
-
-2. **`frontend/test/setup.ts`**:
-   - Mocked browser APIs not supported natively by JSDOM: `ResizeObserver`, `IntersectionObserver`, and Canvas 2D contexts (`HTMLCanvasElement.prototype.getContext`).
-   - Mocked Next.js navigation hooks (`useRouter`, `usePathname`, `useSearchParams`).
-   - Mocked Recharts elements, replacing `ResponsiveContainer` with a standard `div` wrapper to prevent SVG width/height rendering warnings in a headless DOM.
-
-### Unit Tests Added
-
-1. **`frontend/test/api.test.ts`** (6 tests):
-   - Verifies axios configuration defaults (`withCredentials = true` and `baseURL` mapping).
-   - Confirms Double-Submit CSRF header injection (`X-CSRF-Token` attached to mutations if cookie is present, bypassed for `GET` requests).
-   - Validates unauthenticated 401 handling (automatically clears state cookies/storage and redirects via `window.location.replace`).
-   - Asserts that client-side JWT authorization headers (e.g. `Authorization: Bearer`) are not stored or read.
-
-2. **`frontend/test/login.test.tsx`** (3 tests):
-   - Verifies inputs (username, password) and the submit button render correctly.
-   - Asserts successful login triggers `authAPI.login`, updates user store state, sets user cookies, avoids JWT token leakage to `localStorage`, and redirects to the dashboard.
-   - Verifies failed login displays the backend-provided error message and retains state safety.
-
-3. **`frontend/test/dashboard.test.tsx`** (4 tests):
-   - Confirms that loading skeletons render while data is being retrieved.
-   - Verifies dashboard statistics display correctly using the statistics API (not client-side transaction counts).
-   - Validates generic errors render a retry screen, and clicking retry triggers fresh API calls.
-   - Asserts Role-Based Access Control (RBAC) forbidden/access denied views when an unauthorized role tries to access analytics.
-
-4. **`frontend/test/analytics.test.tsx`** (4 tests):
-   - Verifies analytics volume and transaction metrics render correctly.
-   - Asserts time window tabs (7d, 14d, 30d) switch correctly and trigger new trend fetches.
-   - Handles empty datasets and API failures gracefully (showing retry options).
+- Created `frontend/vitest.config.ts` and `frontend/test/setup.ts`.
+- Mocked Next.js navigation routers, canvas contexts, ResizeObserver, IntersectionObserver, and Recharts containers.
+- Added test coverage for auth cookie handling, Double-Submit CSRF, dashboard loaders, RBAC denied routing, and analytics trends.
 
 ---
 
 ## Phase 12: Server-Side Streaming CSV Upload Optimization
 
-### Optimization Summary
-Previously, the browser read and parsed the entire CSV file into memory before uploading it as a JSON batch. For extremely large files (e.g. 282k+ records), this froze low-memory user browsers. We optimized this behavior to run fully server-side with zero memory overhead in either browser or web backend.
-
-### Key Changes
-
-1. **Configuration (`backend/config.py`)**:
-   - Added `MAX_UPLOAD_SIZE = 50 * 1024 * 1024` (50MB) setting.
-   - Added `UPLOAD_CHUNK_SIZE = 1024 * 1024` (1MB) setting.
-
-2. **Multipart Endpoint (`backend/api/routes/predict.py`)**:
-   - Added `POST /api/predict/batch-file` which:
-     - Expects a authenticated `multipart/form-data` file upload.
-     - Validates extension (`.csv`) and media type structure.
-     - Streams file parts in 1MB chunks to a secure temporary file using `tempfile.NamedTemporaryFile`.
-     - Limits maximum cumulative file size, throwing a 413 Payload Too Large if exceeded.
-     - Bypasses raw path exposure, passing the safe random filename to the background worker.
-
-3. **Worker Processing (`backend/tasks/predict_tasks.py`)**:
-   - Implemented `process_batch_file` Celery task:
-     - Scans the file line-by-line using a low-memory line scan to count the total records.
-     - Streams row-by-row using `csv.DictReader` to prevent loading the file in RAM.
-     - Bundles transactions into `BATCH_CHUNK_SIZE` chunks (default 1000) and executes vectorized predictions.
-     - Saves records to the database in transactional chunk-blocks.
-     - Emits progress updates (`total`, `processed`, `failed`, `fraud_count`, `current_chunk`, `total_chunks`, `duration`, `status`).
-     - Employs a `finally` block to delete the temporary file on success or failure.
-
-4. **Frontend API & Page (`frontend/lib/api.ts`, `frontend/app/page.tsx`)**:
-   - Implemented `predictAPI.batchFile` using `FormData` with automatic boundary injection.
-   - Refactored `handleCSV` upload handler to directly post the file, eliminating `FileReader` and local CSV parsing.
-   - Synchronizes `csvState.total` from the background task poll results, keeping visual progress percentages fully supported.
+- Added `POST /api/predict/batch-file` supporting `multipart/form-data` uploads.
+- Configured 1MB chunked streaming upload to a secure `tempfile.NamedTemporaryFile` with a 50MB file size limit threshold.
+- Refactored Celery task to stream-parse files line-by-line avoiding full-in-memory loads.
 
 ---
 
-## Phase 13: Audit Logging and Observability Foundation Changes
+## Phase 13: Audit Logging and Observability Foundation
 
-1. **`backend/utils/logger.py`**:
-   - Implemented a unified `JSONFormatter` to format application output to stdout in structured JSON lines.
-   - Captures level, module, message, event_type, correlation ID (`request_id`), and error categories.
-   - Configured `setup_logging()` to apply this formatter globally to the root logger during application startup.
+- Implemented structured console logging in JSON format (`JSONFormatter`).
+- Added request correlation IDs via `RequestIdMiddleware` using `ContextVar`.
+- Created `AuditLog` database model and indexes.
+- Implemented `log_audit_event()` with sensitive credential redaction (`[REDACTED]`).
+- Created admin-only `GET /api/audit-logs` endpoint with pagination and filters.
 
-2. **`backend/middleware/request_id.py`**:
-   - Implemented `RequestIdMiddleware` which extracts/generates unique request-scoped correlation IDs using a Python `ContextVar`.
-   - Attaches `X-Request-ID` to all response headers and automatically logs context IDs in structured logs.
-   - Safely bypasses WebSocket routing to prevent handshake upgrade crashes.
+---
 
-3. **`backend/models/audit_log.py`**:
-   - Created the `AuditLog` database model tracking action details (`action`, `actor_user_id`, `actor_role`, `resource_type`, `resource_id`, `status`, `ip_address`, `user_agent`, `metadata_json`, `created_at`).
-   - Wired database indexes on `created_at`, `action`, `actor_user_id`, and `status` to ensure fast queries.
+## Phase 14: High-Throughput Fraud Batch Ingestion Optimization
 
-4. **`backend/alembic/versions/6e7d98ac5b9d_add_audit_logs_table.py`**:
-   - Generated the Alembic migration scripts to create the `audit_logs` table and target indexes.
-   - Validated migration execution on SQLite and verified it has no destructive operations.
+- Swapped `csv.DictReader` loop parser for chunked Pandas processing (`pd.read_csv(..., chunksize=...)`).
+- Vectorized input validation masks inside `validate_chunk_pandas` to evaluate required columns, parse `Amount` and `Time`, check PCA features (`V1-V28`), and filter invalid rows instantly.
+- Cap Celery task outputs (predictions and failed details list) at **100 entries** for uploads exceeding 1,000 transactions to protect broker RAM.
 
-5. **`backend/services/audit_service.py`**:
-   - Implemented `log_audit_event(...)` which logs to stdout structured console logs and writes a fail-safe row to the database inside a try-except block.
-   - Added recursive key-substring credentials redaction (`redact_sensitive_values`) replacing passwords/tokens/cards with `[REDACTED]`.
-   - Enforced a metadata whitelist (`sanitize_metadata`) to guarantee no raw bodies or CSV contents get stored.
+---
 
-6. **`backend/api/routes/audit_logs.py`**:
-   - Implemented the admin-only `GET /api/audit-logs` query route with pagination, sorting (`newest first`), and filters (`action`, `actor_user_id`, `status`, `resource_type`).
-   - Restricts non-admin requests with 403 and unauthenticated requests with 401.
+## Phase 14.1: Ultra-Fast PostgreSQL COPY Ingestion
 
-7. **`backend/tasks/predict_tasks.py`**:
-   - Integrated task metrics audits (`batch_started`, `batch_completed`, `batch_failed` for JSON and `batch_file_started`, `batch_file_completed`, `batch_file_failed` for CSV uploads).
-   - Emits structured application logs for chunk processing progress (`chunk_progress`) while keeping the database writes limited only to task start/end events.
+ We optimized the ingestion phase by using the PostgreSQL-specific COPY fast path, removing redundant CSV parsing scans, implementing dynamic byte progress tracking, and tuning the ingestion chunk size.
+
+### Key Changes
+
+1. **PostgreSQL COPY Fast Path (`backend/tasks/predict_tasks.py`)**:
+   - Detected connection dialect at runtime: `connection.dialect.name == "postgresql"`.
+   - Retrieved raw `asyncpg` driver connection using `connection.get_raw_connection().driver_connection`.
+   - Persisted batch chunks directly using `driver_conn.copy_records_to_table("transactions", records=records, columns=columns)`.
+   - Generates unique UUID keys server-side before execution and serializes JSON columns (`v_features`, `top_features`, `shap_values`) safely.
+   - Retained SQLAlchemy Core bulk insert fallback for local SQLite development and test compatibility.
+
+2. **Safe Pandas Streaming & Dynamic Byte Progress (`backend/tasks/predict_tasks.py`)**:
+   - Removed the line-by-line pre-scan of the CSV file, eliminating a severe 4.75-second CPU parsing bottleneck.
+   - Stream-reads CSV file using `pd.read_csv(..., chunksize=BATCH_CHUNK_SIZE)`.
+   - Computes progress dynamically based on bytes processed (`f.tell()`) vs total file size.
+   - Sets `total_records` and `total_chunks` to `None`/`null` during processing to reflect unknown row counts until completion, updating them to exact final values at completion.
+   - Default `defer_shap=True` for all file-based batch uploads.
+
+3. **COPY Failure Isolation (`backend/tasks/predict_tasks.py`)**:
+   - Rolled back only the failed chunk using chunk-scoped transactions.
+   - Re-runs individual inserts one-by-one inside a transaction fallback block to isolate constraint-violating rows, log detailed errors (capped at 100 sample entries), and commit valid rows where safely possible.
+
+4. **Optimal Chunk Size Default (`backend/tasks/predict_tasks.py`)**:
+   - Tuned `BATCH_CHUNK_SIZE` default from `5000` to `10000` based on Docker Compose benchmarks showing this as the peak throughput point.
+
+5. **PostgreSQL Integration Tests (`backend/tests/test_postgresql_copy_integration.py`)**:
+   - Added test coverage ensuring successful COPY execution, correct column type persistence, failure isolation/fallback, and audit logging events.
 
 ---
 
 ## Validation & Verification Results
 
 ### 1. Pytest Test Suite
-* **Execution:** Run pytest to verify SQLite test database compatibility, auth, predictions, and WebSocket/admin audit APIs.
+* **Execution:** Ran all backend tests (including the new PostgreSQL COPY integration tests and Pandas optimization tests) inside the container:
   ```bash
-  pytest
-  # Outcome: 64 passed, 3 warnings in 26.80s
+  docker compose exec backend pytest
+  # Outcome: 81 passed, 42 warnings in 111.97s
   ```
 
-### 2. Test Coverage Metrics
-* **Execution:** Checked backend code coverage.
+### 2. Alembic Database Migrations
+* **Execution:** Stamp migration head and run check to verify model-to-db schema sync:
   ```bash
-  pytest --cov=. --cov-report=term-missing
-  # Outcome: 82% total coverage (100% on audit services and logger utilities)
-  ```
-
-### 3. Python Compilation Check
-* **Execution:** Verified no syntax/structural compilation issues exist.
-  ```bash
-  py -m compileall backend
-  # Outcome: All files compiled cleanly
-  ```
-
-### 4. Frontend Unit Tests Check
-* **Execution:** Verify all client-side unit tests.
-  ```bash
-  npm run test -- --run
-  # Outcome: 19 passed across all 5 test files in 7.10s
-  ```
-
-### 5. Frontend Production Build Check
-* **Execution:** Verified frontend compiles and bundles correctly.
-  ```bash
-  npm run build
-  # Outcome: Compiled successfully
-  ```
-
-### 6. Alembic Schema Validation
-* **Execution:** Checked if Alembic schema is fully in sync with models.
-  ```bash
-  alembic check
+  docker compose exec backend alembic stamp head
+  docker compose exec backend alembic upgrade head
+  docker compose exec backend alembic check
   # Outcome: No new upgrade operations detected (successfully in sync)
   ```
 
-### 7. Docker Compose Config Validation
-* **Execution:** Checked compose schema structure.
+### 3. Docker Compose Build
+* **Execution:** Checked Docker configuration validity and built both service images successfully:
   ```bash
   docker compose config
-  # Outcome: Valid configuration
+  docker compose build backend frontend
+  # Outcome: All builds compiled cleanly
   ```
+
+### 4. Frontend Unit Tests & Build
+* **Execution:** Verified Vitest unit tests and compiled Next.js production bundles on host:
+  ```bash
+  npm run test
+  # Outcome: 19 passed across all 5 test files in 13.70s
+  
+  npm run build
+  # Outcome: Next.js build compiled successfully (0 errors)
+  ```
+
+### 5. Ingestion Optimization Benchmarks
+* **Execution:** Ran performance profiling inside Docker containers (`fraud_backend` running against `fraud_db` and `fraud_redis`):
+  ```bash
+  docker compose exec backend python /app/profile_optimized_runs.py
+  ```
+* **Performance Comparison Metrics**:
+
+| Dataset | Previous Median Time | New Median Time | Previous Throughput | New Throughput | Improvement | Chunk Size | DB Path | SHAP Mode |
+| ------- | -------------------: | --------------: | ------------------: | -------------: | ----------: | ---------: | ------- | --------- |
+| 1,000 | 1.2126s | 0.6427s | 824.66 rec/s | 1556.01 rec/s | 47.00% | 10000 | PostgreSQL COPY | Enabled |
+| 10,000 | 2.2175s | 2.0229s | 4509.56 rec/s | 4943.49 rec/s | 8.78% | 10000 | PostgreSQL COPY | Deferred |
+| 50,000 | 9.5568s | 8.2860s | 5231.86 rec/s | 6034.28 rec/s | 13.30% | 10000 | PostgreSQL COPY | Deferred |
+
+All verification criteria have been successfully satisfied.

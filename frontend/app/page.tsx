@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import Sidebar from '@/app/components/Sidebar'
 import { useToast } from '@/app/components/Toast'
 import { transactionsAPI, predictAPI } from '@/lib/api'
@@ -57,8 +57,17 @@ export default function TransactionsPage() {
   })
 
   const perPage = 15
+  const reqIdRef = useRef(0)
 
-  const fetchTransactions = async (p = page) => {
+  useEffect(() => {
+    const currentRef = reqIdRef
+    return () => {
+      currentRef.current++
+    }
+  }, [])
+
+  const fetchTransactions = useCallback(async (p: number = 1) => {
+    const reqId = ++reqIdRef.current
     setLoading(true)
     setError(null)
     try {
@@ -68,20 +77,25 @@ export default function TransactionsPage() {
       if (fraudFilter !== '') params.is_fraud = fraudFilter === 'true'
 
       const res = await transactionsAPI.list(params)
+      if (reqId !== reqIdRef.current) return
       setTransactions(res.data.transactions)
       setTotal(res.data.total)
     } catch (err: any) {
+      if (reqId !== reqIdRef.current) return
       if (err.response?.status === 403) {
         setError('forbidden')
       } else {
         setError('error')
       }
       toast('Failed to load transactions', 'error')
-    } finally { setLoading(false) }
-  }
+    } finally {
+      if (reqId === reqIdRef.current) {
+        setLoading(false)
+      }
+    }
+  }, [riskFilter, statusFilter, fraudFilter, toast])
 
-  useEffect(() => { fetchTransactions(1); setPage(1) }, [riskFilter, statusFilter, fraudFilter])
-  useEffect(() => { fetchTransactions(page) }, [page])
+  useEffect(() => { fetchTransactions(page) }, [fetchTransactions, page])
 
   // CSV Upload
   const handleCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -298,7 +312,7 @@ export default function TransactionsPage() {
           </div>
 
           {/* Risk filter */}
-          <select value={riskFilter} onChange={e => setRiskFilter(e.target.value)} style={{
+          <select value={riskFilter} onChange={e => { setRiskFilter(e.target.value); setPage(1); }} style={{
             padding:'10px 14px', borderRadius:'10px', background:'#0d1117',
             border:'1px solid #1a2035', color: riskFilter ? '#e2e8f0' : '#4b5563',
             fontSize:'13px', outline:'none', cursor:'pointer', fontFamily:'inherit' }}>
@@ -309,7 +323,7 @@ export default function TransactionsPage() {
           </select>
 
           {/* Status filter */}
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{
+          <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }} style={{
             padding:'10px 14px', borderRadius:'10px', background:'#0d1117',
             border:'1px solid #1a2035', color: statusFilter ? '#e2e8f0' : '#4b5563',
             fontSize:'13px', outline:'none', cursor:'pointer', fontFamily:'inherit' }}>
@@ -321,7 +335,7 @@ export default function TransactionsPage() {
           </select>
 
           {/* Fraud filter */}
-          <select value={fraudFilter} onChange={e => setFraudFilter(e.target.value)} style={{
+          <select value={fraudFilter} onChange={e => { setFraudFilter(e.target.value); setPage(1); }} style={{
             padding:'10px 14px', borderRadius:'10px', background:'#0d1117',
             border:'1px solid #1a2035', color: fraudFilter !== '' ? '#e2e8f0' : '#4b5563',
             fontSize:'13px', outline:'none', cursor:'pointer', fontFamily:'inherit' }}>
@@ -332,7 +346,7 @@ export default function TransactionsPage() {
 
           {/* Clear filters */}
           {(riskFilter || statusFilter || fraudFilter || search) && (
-            <button onClick={() => { setRiskFilter(''); setStatusFilter(''); setFraudFilter(''); setSearch('') }}
+            <button onClick={() => { setRiskFilter(''); setStatusFilter(''); setFraudFilter(''); setSearch(''); setPage(1); }}
               style={{ padding:'10px 14px', borderRadius:'10px', border:'1px solid #374151',
                 background:'transparent', color:'#6b7280', fontSize:'13px',
                 cursor:'pointer', fontFamily:'inherit' }}>

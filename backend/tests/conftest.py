@@ -80,8 +80,15 @@ def anyio_backend():
 
 @pytest.fixture(autouse=True)
 def mock_redis_cache():
+    from middleware.rate_limit import _reset_memory_rate_limits
+    from cache import clear_in_memory_cache
+    import asyncio
+    clear_in_memory_cache()
+    asyncio.run(_reset_memory_rate_limits())
     with patch("cache.get_redis", side_effect=Exception("Redis disabled in tests")):
         yield
+    clear_in_memory_cache()
+    asyncio.run(_reset_memory_rate_limits())
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -101,6 +108,7 @@ async def client():
         # Create tables
         from models.user import User
         from models.transaction import Transaction
+        from models.audit_log import AuditLog
         from database.db import Base
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)

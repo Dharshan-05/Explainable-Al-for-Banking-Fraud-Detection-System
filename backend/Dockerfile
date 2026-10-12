@@ -20,7 +20,9 @@ COPY . .
 
 # Create non-root user (required for Celery SecurityWarning suppression)
 RUN adduser --disabled-password --gecos "" appuser && \
-    chown -R appuser:appuser /app
+    mkdir -p /app/uploads && \
+    chown -R appuser:appuser /app && \
+    chmod 777 /app/uploads
 
 USER appuser
 

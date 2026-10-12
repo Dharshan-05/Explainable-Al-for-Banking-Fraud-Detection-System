@@ -29,6 +29,13 @@ class RegisterRequest(BaseModel):
     username  : str
     full_name : str
     password  : str
+    role      : Optional[UserRole] = None
+
+class AdminCreateUserRequest(BaseModel):
+    email     : EmailStr
+    username  : str
+    full_name : str
+    password  : str
     role      : UserRole = UserRole.analyst
 
 class UserResponse(BaseModel):
@@ -50,7 +57,27 @@ class TokenResponse(BaseModel):
 # ─────────────────────────────────────────
 @router.post("/register", response_model=UserResponse, status_code=201)
 async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    user = await register_user(db, data)
+    # Security: Prevent untrusted clients from self-assigning privileged roles
+    if data.role in (UserRole.admin, UserRole.fraud_analyst):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Registration with privileged role '{data.role.value}' is not permitted. Privileged roles must be assigned by an administrator."
+        )
+    effective_role = data.role or UserRole.analyst
+    user = await register_user(db, data, role=effective_role)
+    return UserResponse(
+        id=str(user.id), email=user.email, username=user.username,
+        full_name=user.full_name, role=user.role.value if hasattr(user.role, "value") else str(user.role), is_active=user.is_active
+    )
+
+
+@router.post("/admin/create-user", response_model=UserResponse, status_code=201)
+async def admin_create_user(
+    data: AdminCreateUserRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.admin))
+):
+    user = await register_user(db, data, role=data.role)
     return UserResponse(
         id=str(user.id), email=user.email, username=user.username,
         full_name=user.full_name, role=user.role.value if hasattr(user.role, "value") else str(user.role), is_active=user.is_active

@@ -30,10 +30,10 @@ This project solves this problem by integrating:
 * **Analyst Review Workflow:** Secure PUT endpoints to update transaction review statuses (`pending`, `reviewed`, `flagged`) with auditor notes.
 * **Dashboard Analytics:** Real-time analytics, daily trend statistics, and risk distribution metrics.
 * **WebSocket Live Alerts:** Secured real-time connection that pushes high-risk transaction alerts to active analysts.
-* **Celery Vectorized Batch Chunking:** Partitions large CSV uploads into chunks of 1,000 records, executing fully vectorized inference, scaling, and database commits for high-throughput processing (~824 records/sec).
+* **Celery Vectorized Batch Chunking:** Partitions large CSV uploads into chunks of 5,000 records (configurable via `BATCH_CHUNK_SIZE`), executing fully vectorized inference, scaling, and database commits for high-throughput processing (~5,388 records/sec).
 * **SHAP Deferral Logic:** Dynamically defers expensive SHAP calculations for bulk uploads exceeding 1,000 rows to ensure fast execution, marking explanations as "Explanation deferred for batch processing".
 * **Real-Time Progress Tracking:** Leverages Celery task state updates during execution to display elapsed duration, current chunk status, and overall percentage via a live frontend progress bar.
-* **Memory-Safe Response Payloads:** Caps Celery results to the first 100 sample predictions for large uploads (>1000 records) to mitigate memory bloat and out-of-memory crashes during API serialization.
+* **Memory-Safe Response Payloads:** Caps predictions and failed details lists to the first 100 samples for large uploads (>1000 records) to mitigate memory bloat and OOM crashes during API serialization.
 * **Redis Cache & Queue:** Backs Celery tasks and caches API rate limits.
 * **PostgreSQL Persistence:** Relational database with targeted indexes on query columns.
 * **RBAC-Secured APIs:** Strict JWT authentication protecting transactions and analytics routes with distinct roles (`admin`, `analyst`, `customer`).

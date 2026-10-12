@@ -1,71 +1,219 @@
 # ============================================================
 #  middleware/rate_limit.py  —  Sliding Window Rate Limiter
-#  Uses Redis to enforce 60 req/min per authenticated user.
-#  Unauthenticated requests are rate-limited by IP.
+#  - Predictions: 60 req/min per user (or IP)
+#  - Login endpoint: 5 attempts/min per IP with in-memory fallback
 # ============================================================
 
 import time
-from fastapi import Request, Response
+import asyncio
+from collections import defaultdict
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from config import settings
 
+# Prediction rate limiting
+PREDICT_PATH_PREFIXES = ("/api/predict",)
 
-# Only apply rate limiting to these path prefixes
-RATE_LIMITED_PREFIXES = ("/api/predict",)
+# Login rate limiting path
+LOGIN_PATH = "/api/auth/login"
+
+# ─────────────────────────────────────────────────────────────
+# In-memory sliding-window fallback store (used if Redis is offline)
+# Thread/async safe within a single process via asyncio lock
+# ─────────────────────────────────────────────────────────────
+_memory_lock = asyncio.Lock()
+_memory_windows: dict[str, list[float]] = defaultdict(list)
+
+
+async def _check_memory_rate_limit(key: str, limit: int, window_seconds: int) -> tuple[int, int, int]:
+    """
+    In-memory fallback rate limiter using sliding timestamp window.
+    Returns: (request_count, remaining, reset_timestamp)
+    """
+    now = time.time()
+    window_start = now - window_seconds
+    async with _memory_lock:
+        timestamps = _memory_windows[key]
+        # Purge entries outside window
+        valid = [t for t in timestamps if t > window_start]
+        valid.append(now)
+        _memory_windows[key] = valid
+        count = len(valid)
+
+    remaining = max(0, limit - count)
+    reset = int(now + window_seconds)
+    return count, remaining, reset
+
+
+async def _reset_memory_rate_limits():
+    """Testing helper to clear in-memory rate limiting state."""
+    async with _memory_lock:
+        _memory_windows.clear()
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # Only rate-limit prediction endpoints
-        if not any(request.url.path.startswith(p) for p in RATE_LIMITED_PREFIXES):
-            return await call_next(request)
+        path = request.url.path
 
+        # Case 1: Login endpoint rate limiting
+        if path == LOGIN_PATH and request.method.upper() == "POST":
+            return await self._handle_login_rate_limit(request, call_next)
+
+        # Case 2: Prediction endpoints rate limiting
+        if any(path.startswith(p) for p in PREDICT_PATH_PREFIXES):
+            return await self._handle_predict_rate_limit(request, call_next)
+
+        # All other routes pass through without rate limiting
+        return await call_next(request)
+
+    async def _handle_login_rate_limit(self, request: Request, call_next):
+        """
+        Enforce strict rate limits on POST /api/auth/login.
+        Keyed by client IP to block brute-force attacks.
+        Uses Redis when available, with in-memory fallback when Redis is unavailable.
+        """
+        limit = settings.LOGIN_RATE_LIMIT_PER_MINUTE
+        window = settings.LOGIN_RATE_LIMIT_WINDOW_SECONDS
+        ip = _extract_ip(request)
+        key = f"rate_limit:login:ip:{ip}"
+        now = int(time.time())
+
+        request_count = None
+        remaining = 0
+        reset = now + window
+
+        # Try Redis first
+        try:
+            from cache import get_redis
+            redis = await get_redis()
+            window_start = now - window
+
+            pipe = redis.pipeline()
+            pipe.zremrangebyscore(key, 0, window_start)
+            pipe.zadd(key, {f"{now}:{time.time_ns()}": now})
+            pipe.zcard(key)
+            pipe.expire(key, window + 5)
+            results = await pipe.execute()
+
+            request_count = results[2]
+            remaining = max(0, limit - request_count)
+            reset = now + window
+        except Exception:
+            # Redis is unavailable: use in-memory sliding window fallback
+            request_count, remaining, reset = await _check_memory_rate_limit(key, limit, window)
+
+        headers = {
+            "X-RateLimit-Limit": str(limit),
+            "X-RateLimit-Remaining": str(remaining),
+            "X-RateLimit-Reset": str(reset),
+        }
+
+        if request_count is not None and request_count > limit:
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "detail": f"Too many login attempts. Max {limit} attempts per minute. Try again in {window} seconds.",
+                    "retry_after": window,
+                },
+                headers=headers,
+            )
+
+        response = await call_next(request)
+        # Attach rate limit headers to response
+        for k, v in headers.items():
+            response.headers[k] = v
+        return response
+
+    async def _handle_predict_rate_limit(self, request: Request, call_next):
+        """Handle prediction endpoints (60 req/min per user or IP)."""
+        limit = settings.RATE_LIMIT_PER_MINUTE
+        window = 60
+        now = int(time.time())
+
+        headers = {}
         try:
             from cache import get_redis
             redis = await get_redis()
 
-            # Identify the caller — prefer JWT sub, fall back to IP
             identifier = _extract_identifier(request)
             key = f"rate_limit:{identifier}"
-            now = int(time.time())
-            window_start = now - 60  # 1-minute sliding window
+            window_start = now - window
 
-            # Redis sorted-set sliding window
             pipe = redis.pipeline()
-            pipe.zremrangebyscore(key, 0, window_start)       # drop old entries
-            pipe.zadd(key, {str(now) + ":" + str(time.time_ns()): now})  # add current
-            pipe.zcard(key)                                   # count in window
-            pipe.expire(key, 65)                              # auto-expire set
+            pipe.zremrangebyscore(key, 0, window_start)
+            pipe.zadd(key, {f"{now}:{time.time_ns()}": now})
+            pipe.zcard(key)
+            pipe.expire(key, window + 5)
             results = await pipe.execute()
 
             request_count = results[2]
-            limit = settings.RATE_LIMIT_PER_MINUTE
-
-            # Attach rate-limit headers (always)
             remaining = max(0, limit - request_count)
             headers = {
                 "X-RateLimit-Limit": str(limit),
                 "X-RateLimit-Remaining": str(remaining),
-                "X-RateLimit-Reset": str(now + 60),
+                "X-RateLimit-Reset": str(now + window),
             }
 
             if request_count > limit:
                 return JSONResponse(
                     status_code=429,
                     content={
-                        "detail": f"Rate limit exceeded. Max {limit} requests/minute. Try again in 60 seconds.",
-                        "retry_after": 60,
+                        "detail": f"Rate limit exceeded. Max {limit} requests/minute. Try again in {window} seconds.",
+                        "retry_after": window,
                     },
                     headers=headers,
                 )
-
         except Exception:
-            # If Redis is unavailable, allow the request through (fail open)
+            # Prediction rate limit fails open if Redis is down
             pass
 
         response = await call_next(request)
+        for k, v in headers.items():
+            response.headers[k] = v
         return response
+
+
+def _is_trusted_proxy(peer_ip: str) -> bool:
+    """Check if the connecting peer IP matches any configured trusted proxy or network."""
+    if not settings.TRUSTED_PROXIES or not peer_ip:
+        return False
+    import ipaddress
+    try:
+        peer_addr = ipaddress.ip_address(peer_ip)
+    except ValueError:
+        return False
+
+    for proxy_pattern in settings.TRUSTED_PROXIES:
+        try:
+            network = ipaddress.ip_network(proxy_pattern, strict=False)
+            if peer_addr in network:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def _extract_ip(request: Request) -> str:
+    """
+    Extract client IP for rate limiting.
+    - If connecting peer is not a trusted proxy, always use request.client.host directly.
+    - If connecting peer is an explicitly configured trusted proxy, parse X-Forwarded-For:
+      The leftmost valid IP in X-Forwarded-For represents the original client.
+    """
+    peer_ip = request.client.host if request.client else None
+    if not peer_ip:
+        return "unknown"
+
+    if _is_trusted_proxy(peer_ip):
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            # First IP in X-Forwarded-For chain is the originating client IP
+            origin_ip = forwarded_for.split(",")[0].strip()
+            if origin_ip:
+                return origin_ip
+
+    return peer_ip
 
 
 def _extract_identifier(request: Request) -> str:
@@ -82,7 +230,4 @@ def _extract_identifier(request: Request) -> str:
                 return f"user:{sub}"
         except Exception:
             pass
-    # Fall back to IP
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    ip = forwarded_for.split(",")[0].strip() if forwarded_for else request.client.host
-    return f"ip:{ip}"
+    return f"ip:{_extract_ip(request)}"

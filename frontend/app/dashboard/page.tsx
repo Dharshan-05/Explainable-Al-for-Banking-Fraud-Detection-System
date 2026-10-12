@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import { useTheme } from '@/app/components/ThemeContext'
@@ -21,7 +21,7 @@ export default function Dashboard() {
     tick(); const id = setInterval(tick, 1000); return () => clearInterval(id)
   }, [])
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -67,11 +67,11 @@ export default function Dashboard() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [toast])
 
   useEffect(() => {
     fetchStats()
-  }, [])
+  }, [fetchStats])
 
   const Skeleton = () => (
     <div style={{ height:'80px', borderRadius:'12px',

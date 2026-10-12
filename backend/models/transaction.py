@@ -16,6 +16,11 @@ class RiskLevel(str, enum.Enum):
 
 
 class TransactionStatus(str, enum.Enum):
+    PENDING  = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    FLAGGED  = "FLAGGED"
+    # Backward compatible aliases
     pending  = "pending"
     approved = "approved"
     rejected = "rejected"
@@ -50,6 +55,8 @@ class Transaction(Base):
     status          = Column(Enum(TransactionStatus), default=TransactionStatus.pending, index=True)
     reviewed_by     = Column(String(255), nullable=True)
     review_notes    = Column(Text,        nullable=True)
+    reviewed_at     = Column(DateTime(timezone=True), nullable=True)
+    assigned_analyst = Column(String(255), nullable=True)
 
     # Timestamps
     created_at      = Column(DateTime(timezone=True), server_default=func.now(), index=True)
@@ -57,3 +64,4 @@ class Transaction(Base):
 
     def __repr__(self):
         return f"<Transaction {self.id} amount={self.amount} fraud={self.is_fraud}>"
+

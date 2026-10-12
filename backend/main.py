@@ -1,7 +1,15 @@
-# ============================================================
-#  main.py  —  FastAPI Entry Point
-#  Fraud Detection XAI Backend
-# ============================================================
+import sys
+# Force stdout/stderr to use UTF-8 to prevent UnicodeEncodeError with emojis on Windows
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,10 +38,19 @@ async def lifespan(app: FastAPI):
     print("🧠 ML model will load on first prediction request")
     print("⚡ Redis / Celery integration active")
     yield
-    # Graceful shutdown — close Redis connection pool
-    from cache import close_redis
-    await close_redis()
+    # Graceful shutdown — close Redis connection pool and dispose database engine
     print("👋 Shutting down...")
+    try:
+        from cache import close_redis
+        await close_redis()
+    except Exception as e:
+        print(f"⚠️ Error closing Redis: {e}")
+
+    try:
+        from database.db import engine
+        await engine.dispose()
+    except Exception as e:
+        print(f"⚠️ Error disposing database engine: {e}")
 
 
 # ─────────────────────────────────────────
@@ -91,24 +108,46 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health():
-    # Quick Redis ping
-    redis_status = "ok"
+    import asyncio
+
+    async def _probe_redis() -> str:
+        try:
+            from cache import get_redis
+            r = await get_redis()
+            await r.ping()
+            return "ok"
+        except Exception:
+            return "unavailable"
+
+    async def _probe_db() -> str:
+        try:
+            from database.db import engine
+            from sqlalchemy import text
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+            return "ok"
+        except Exception:
+            return "unavailable"
+
+    # Execute both probes concurrently under a unified 2.0-second overall deadline
+    t_redis = asyncio.create_task(_probe_redis())
+    t_db = asyncio.create_task(_probe_db())
+
     try:
-        from cache import get_redis
-        r = await get_redis()
-        await r.ping()
+        redis_status, db_status = await asyncio.wait_for(
+            asyncio.gather(t_redis, t_db),
+            timeout=2.0
+        )
+    except TimeoutError:
+        redis_status = t_redis.result() if (t_redis.done() and not t_redis.cancelled() and not t_redis.exception()) else "unavailable"
+        db_status = t_db.result() if (t_db.done() and not t_db.cancelled() and not t_db.exception()) else "unavailable"
+        t_redis.cancel()
+        t_db.cancel()
     except Exception:
         redis_status = "unavailable"
-
-    # Quick DB ping
-    db_status = "ok"
-    try:
-        from database.db import engine
-        from sqlalchemy import text
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-    except Exception:
         db_status = "unavailable"
+        t_redis.cancel()
+        t_db.cancel()
 
     status = "healthy"
     if redis_status != "ok" or db_status != "ok":

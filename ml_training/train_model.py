@@ -68,8 +68,9 @@ with mlflow.start_run(run_name="xgboost-smote-training"):
 
     # Scale Amount and Time (V1-V28 are already PCA-transformed)
     scaler = StandardScaler()
-    df["Amount_Scaled"] = scaler.fit_transform(df[["Amount"]])
-    df["Time_Scaled"]   = scaler.fit_transform(df[["Time"]])
+    scaled_amt_time = scaler.fit_transform(df[["Amount", "Time"]])
+    df["Amount_Scaled"] = scaled_amt_time[:, 0]
+    df["Time_Scaled"]   = scaled_amt_time[:, 1]
     df.drop(columns=["Amount", "Time"], inplace=True)
 
     # Features & Target

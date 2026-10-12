@@ -34,7 +34,8 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      if (typeof window !== 'undefined') {
+      const isLoginRequest = err.config?.url?.includes('/api/auth/login')
+      if (typeof window !== 'undefined' && !isLoginRequest) {
         // Clear cookies and session storage on 401
         document.cookie = 'user=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
         localStorage.removeItem('fraud-detection-store')
@@ -80,6 +81,11 @@ export const transactionsAPI = {
   get:    (id: string)   => api.get(`/api/transactions/${id}`),
   flagged:(limit = 10)   => api.get(`/api/transactions/flagged?limit=${limit}`),
   review: (id: string, data: any) => api.put(`/api/transactions/${id}/review`, data),
+  approve: (id: string, notes?: string) => api.put(`/api/transactions/${id}/approve`, { notes }),
+  reject: (id: string, notes: string) => api.put(`/api/transactions/${id}/reject`, { notes }),
+  flag: (id: string, notes?: string, assigned_analyst?: string) => api.put(`/api/transactions/${id}/flag`, { notes, assigned_analyst }),
+  bulkReview: (ids: string[], status: string, notes?: string, assigned_analyst?: string) => api.put('/api/transactions/bulk-review', { transactionIds: ids, status, notes, assigned_analyst }),
+  exportCSV: (payload: any) => api.post('/api/transactions/export', payload, { responseType: 'blob' }),
 }
 
 // ─── Analytics ───────────────────────────

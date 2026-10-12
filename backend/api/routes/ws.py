@@ -86,7 +86,7 @@ async def websocket_alerts(
 
         async with AsyncSessionLocal() as db:
             user = await authenticate_ws_token(token, db)
-            if user.role not in [UserRole.admin, UserRole.analyst]:
+            if user.role not in [UserRole.admin, UserRole.analyst, UserRole.fraud_analyst]:
                 await log_audit_event(
                     action="websocket_rbac_rejected",
                     resource_type="websocket",

@@ -79,6 +79,10 @@ describe('API Client (api.ts)', () => {
     expect(window.location.href).toBe('/auth/login')
 
     // Restore location
-    window.location = originalLocation
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    })
   })
 })

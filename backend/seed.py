@@ -1,8 +1,16 @@
 import asyncio, random
+import sys
 from datetime import datetime, timedelta
 from database.db import engine
 from models.transaction import Transaction
 from sqlalchemy.ext.asyncio import AsyncSession
+
+# Force stdout/stderr to use UTF-8 to prevent UnicodeEncodeError with emojis on Windows
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 async def seed():
     async with AsyncSession(engine) as db:

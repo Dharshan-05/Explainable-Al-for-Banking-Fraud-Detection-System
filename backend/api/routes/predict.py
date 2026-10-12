@@ -12,11 +12,14 @@ from typing import Optional, List, Any
 import uuid
 import tempfile
 import os
+import logging
 
 from database.db import get_db
 from api.deps import get_current_user
 from models.user import User
 from config import settings
+
+logger = logging.getLogger("predict_routes")
 
 router = APIRouter()
 
@@ -184,27 +187,55 @@ async def predict_batch_result(
 ):
     """
     Poll the status of an async batch prediction task.
-    Status values: PENDING | STARTED | SUCCESS | FAILURE
+    Status values: PENDING | STARTED | PROGRESS | SUCCESS | FAILURE
     """
     from worker import celery_app
     from celery.result import AsyncResult
+    from cache import cache_get
 
     task_result = AsyncResult(task_id, app=celery_app)
 
-    if task_result.state == "FAILURE":
+    # Check if a dead-letter record exists for exhausted or fatal tasks
+    dead_letter_info = await cache_get(f"dead_letter:tasks:{task_id}")
+
+    state = "PENDING"
+    info = None
+    try:
+        state = task_result.state
+        info = task_result.info
+    except Exception as backend_err:
+        logger.warning(f"Could not read task state from Celery backend for {task_id}: {backend_err}")
+        if dead_letter_info is None:
+            # If backend is unreachable and no dead-letter record, return PENDING
+            state = "PENDING"
+
+    if state == "FAILURE" or dead_letter_info is not None:
+        raw_err = None
+        try:
+            raw_err = str(task_result.result) if task_result.result is not None else None
+        except Exception:
+            pass
+
+        if dead_letter_info:
+            err_msg = f"{dead_letter_info.get('error_type', 'Error')}: {dead_letter_info.get('error_message', 'Task failed')}"
+        elif raw_err:
+            err_msg = raw_err
+        else:
+            err_msg = "Task encountered an unrecoverable failure during execution."
+
         return BatchResultResponse(
             task_id = task_id,
             status  = "FAILURE",
-            error   = str(task_result.result),
+            error   = err_msg,
+            result  = dead_letter_info,
         )
 
-    info = task_result.info
     if isinstance(info, Exception):
         info = str(info)
 
     return BatchResultResponse(
         task_id = task_id,
-        status  = task_result.state,
+        status  = state,
         result  = info,
     )
 
@@ -263,8 +294,13 @@ async def predict_batch_file_submit(
         )
         raise HTTPException(status_code=400, detail="Only CSV files are supported.")
 
-    # Create temporary file with secure random name and suffix .csv
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
+    # Create temporary file in shared uploads directory with fallback to default tempdir
+    upload_dir = settings.UPLOAD_DIR
+    try:
+        os.makedirs(upload_dir, mode=0o777, exist_ok=True)
+        temp_file = tempfile.NamedTemporaryFile(dir=upload_dir, delete=False, suffix=".csv")
+    except (PermissionError, OSError):
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
     temp_file_path = temp_file.name
     
     try:

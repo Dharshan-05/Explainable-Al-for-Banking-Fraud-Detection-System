@@ -9,6 +9,8 @@ db_url = settings.DATABASE_URL.split("?")[0]
 connect_args = {}
 if settings.DATABASE_URL.startswith("postgresql"):
     connect_args["ssl"] = False
+    # Bound asyncpg command execution timeout to prevent lingering blocked queries
+    connect_args["command_timeout"] = 30.0
 
 engine_kwargs = {
     "echo": False,
@@ -18,6 +20,8 @@ engine_kwargs = {
 if not db_url.startswith("sqlite"):
     engine_kwargs["pool_size"] = 5
     engine_kwargs["max_overflow"] = 10
+    engine_kwargs["pool_recycle"] = 1800  # Recycle connections older than 30 mins to avoid idle timeout drops
+    engine_kwargs["pool_timeout"] = 30.0  # Max seconds to wait for an available pooled connection
 
 engine = create_async_engine(db_url, **engine_kwargs)
 AsyncSessionLocal = async_sessionmaker(

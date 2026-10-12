@@ -26,12 +26,16 @@ class Settings(BaseSettings):
     # Redis (Required in environment / .env)
     REDIS_URL: str
 
-    # Rate limiting (requests per minute per user)
+    # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
+    LOGIN_RATE_LIMIT_PER_MINUTE: int = 5
+    LOGIN_RATE_LIMIT_WINDOW_SECONDS: int = 60
+    TRUSTED_PROXIES: list[str] = []
 
     # File Upload Settings
-    MAX_UPLOAD_SIZE: int = 50 * 1024 * 1024  # 50 MB
+    MAX_UPLOAD_SIZE: int = 250 * 1024 * 1024  # 250 MB
     UPLOAD_CHUNK_SIZE: int = 1024 * 1024    # 1 MB
+    UPLOAD_DIR: str = "/app/uploads"
 
     # Cookie & CSRF Configuration
     COOKIE_NAME: str = "access_token"
@@ -44,6 +48,13 @@ class Settings(BaseSettings):
     def enforce_production_security(self) -> "Settings":
         if not self.DEBUG and not self.TESTING:
             self.COOKIE_SECURE = True
+        # Validate TRUSTED_PROXIES entries
+        import ipaddress
+        for proxy in self.TRUSTED_PROXIES:
+            try:
+                ipaddress.ip_network(proxy, strict=False)
+            except ValueError as e:
+                raise ValueError(f"Invalid trusted proxy IP/network: '{proxy}'") from e
         return self
 
     model_config = {"protected_namespaces": (), "env_file": ".env", "extra": "ignore"}

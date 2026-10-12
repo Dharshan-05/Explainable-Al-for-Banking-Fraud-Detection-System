@@ -36,8 +36,13 @@ scaler       = model_data["scaler"]
 feature_cols = model_data["feature_cols"]
 
 df = pd.read_csv(DATA_PATH)
-df["Amount_Scaled"] = scaler.fit_transform(df[["Amount"]])
-df["Time_Scaled"]   = scaler.fit_transform(df[["Time"]])
+if getattr(scaler, "n_features_in_", 1) == 2:
+    scaled_amt_time = scaler.transform(df[["Amount", "Time"]])
+    df["Amount_Scaled"] = scaled_amt_time[:, 0]
+    df["Time_Scaled"]   = scaled_amt_time[:, 1]
+else:
+    df["Amount_Scaled"] = scaler.transform(df[["Amount"]])
+    df["Time_Scaled"]   = scaler.transform(df[["Time"]])
 df.drop(columns=["Amount", "Time"], inplace=True)
 
 X = df[feature_cols].values

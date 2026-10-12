@@ -25,6 +25,9 @@ celery_app.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     task_max_retries=3,
+    # Task execution timeouts
+    task_soft_time_limit=600,
+    task_time_limit=660,
     # Fix PendingDeprecationWarning in Celery 5.3+
     broker_connection_retry_on_startup=True,
 )

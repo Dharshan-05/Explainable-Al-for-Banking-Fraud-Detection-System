@@ -13,14 +13,14 @@ async def test_rbac_customer_blocked_from_internal_apis(client: AsyncClient):
         "email":     "customer@example.com",
         "username":  "customeruser",
         "full_name": "Customer User",
-        "password":  "customerpass",
+        "password":  "Customer123",
         "role":      "customer",
     })
     
     # 2. Login customer
     login_resp = await client.post("/api/auth/login", data={
         "username": "customeruser",
-        "password": "customerpass",
+        "password": "Customer123",
     })
     assert login_resp.status_code == 200
     token = login_resp.json()["access_token"]
@@ -46,14 +46,14 @@ async def test_rbac_analyst_allowed_internal_apis(client: AsyncClient):
         "email":     "analyst@example.com",
         "username":  "analystuser",
         "full_name": "Analyst User",
-        "password":  "analystpass",
+        "password":  "Analyst123",
         "role":      "analyst",
     })
     
     # 2. Login analyst
     login_resp = await client.post("/api/auth/login", data={
         "username": "analystuser",
-        "password": "analystpass",
+        "password": "Analyst123",
     })
     assert login_resp.status_code == 200
     token = login_resp.json()["access_token"]
@@ -122,6 +122,47 @@ def test_websocket_security_matrix():
             data = ws.receive_json()
             assert data["type"] == "connected"
             assert data["user"] == "wsanalyst"
+
+        # 7. Register and Login Staff (rejected with 4003)
+        client.post("/api/auth/register", json={
+            "email":     "wsstaff@example.com",
+            "username":  "wsstaff",
+            "full_name": "WS Staff",
+            "password":  "wspass123",
+            "role":      "staff",
+        })
+        client.post("/api/auth/login", data={"username": "wsstaff", "password": "wspass123"})
+        try:
+            with client.websocket_connect("/api/ws/alerts") as ws:
+                pass
+        except WebSocketDisconnect as e:
+            assert e.code == 4003
+
+        # 8. Create and Login Fraud Analyst (connects successfully)
+        from database.db import AsyncSessionLocal
+        from services.auth_service import hash_password
+        from models.user import User
+        import asyncio
+
+        async def _create_fa():
+            async with AsyncSessionLocal() as db:
+                fa = User(
+                    email="wsfa@example.com",
+                    username="wsfa",
+                    full_name="WS Fraud Analyst",
+                    hashed_password=hash_password("wspass123"),
+                    role=UserRole.fraud_analyst
+                )
+                db.add(fa)
+                await db.commit()
+
+        asyncio.run(_create_fa())
+
+        client.post("/api/auth/login", data={"username": "wsfa", "password": "wspass123"})
+        with client.websocket_connect("/api/ws/alerts") as ws:
+            data = ws.receive_json()
+            assert data["type"] == "connected"
+            assert data["user"] == "wsfa"
 
 @pytest.mark.asyncio
 async def test_auth_invalid_jwt_signature(client: AsyncClient):

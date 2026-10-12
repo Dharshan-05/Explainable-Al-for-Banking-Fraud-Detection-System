@@ -104,10 +104,17 @@ def predict_transaction(input_dict: dict) -> dict:
             try:
                 amt_idx = feature_cols.index("Amount_Scaled") if "Amount_Scaled" in feature_cols else None
                 time_idx = feature_cols.index("Time_Scaled") if "Time_Scaled" in feature_cols else None
-                if amt_idx is not None:
-                    features[0][amt_idx] = float(scaler.transform([[features[0][amt_idx]]])[0][0])
-                if time_idx is not None:
-                    features[0][time_idx] = float(scaler.transform([[features[0][time_idx]]])[0][0])
+                actual_scaler = getattr(scaler, "_mock_wraps", scaler)
+                n_feat = getattr(actual_scaler, "n_features_in_", 1)
+                if n_feat == 2 and amt_idx is not None and time_idx is not None:
+                    scaled_vals = scaler.transform([[features[0][amt_idx], features[0][time_idx]]])[0]
+                    features[0][amt_idx] = float(scaled_vals[0])
+                    features[0][time_idx] = float(scaled_vals[1])
+                else:
+                    if amt_idx is not None:
+                        features[0][amt_idx] = float(scaler.transform([[features[0][amt_idx]]])[0][0])
+                    if time_idx is not None:
+                        features[0][time_idx] = float(scaler.transform([[features[0][time_idx]]])[0][0])
             except Exception as e:
                 logging.error(f"Error during feature scaling: {e}")
                 raise ValueError(f"Feature scaling failed: {e}")
@@ -256,10 +263,17 @@ def predict_batch(input_list: list, defer_shap: bool = False) -> list:
     # 2. Vectorized Scaling
     if scaler is not None and hasattr(scaler, "transform"):
         try:
-            if amt_idx is not None:
-                features[:, amt_idx] = scaler.transform(features[:, amt_idx:amt_idx+1]).flatten()
-            if time_idx is not None:
-                features[:, time_idx] = scaler.transform(features[:, time_idx:time_idx+1]).flatten()
+            actual_scaler = getattr(scaler, "_mock_wraps", scaler)
+            n_feat = getattr(actual_scaler, "n_features_in_", 1)
+            if n_feat == 2 and amt_idx is not None and time_idx is not None:
+                scaled_vals = scaler.transform(features[:, [amt_idx, time_idx]])
+                features[:, amt_idx] = scaled_vals[:, 0]
+                features[:, time_idx] = scaled_vals[:, 1]
+            else:
+                if amt_idx is not None:
+                    features[:, amt_idx] = scaler.transform(features[:, amt_idx:amt_idx+1]).flatten()
+                if time_idx is not None:
+                    features[:, time_idx] = scaler.transform(features[:, time_idx:time_idx+1]).flatten()
         except Exception as e:
             logging.error(f"Batch scaling failed: {e}")
             raise ValueError(f"Batch scaling failed: {e}")

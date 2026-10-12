@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Sidebar from '@/app/components/Sidebar'
 import { useTheme } from '@/app/components/ThemeContext'
 import { useToast } from '@/app/components/Toast'
@@ -14,7 +14,7 @@ export default function AnalyticsPage() {
   const [data,    setData]    = useState<any>(null)
   const [tab,     setTab]     = useState<'7d'|'14d'|'30d'>('7d')
 
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -89,11 +89,11 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [tab, toast])
 
   useEffect(() => {
     fetchAnalytics()
-  }, [tab])
+  }, [fetchAnalytics])
 
   const riskColors: any = { HIGH:'#ef4444', MEDIUM:'#f59e0b', LOW:'#10b981' }
   const Sk = ({ h='100%' }: any) => <div style={{ width:'100%', height:h, borderRadius:'12px', background: t.card2, animation:'shimmer 1.5s infinite' }}/>

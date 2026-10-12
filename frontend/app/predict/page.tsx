@@ -11,7 +11,7 @@ const PRESETS: any = {
   'High Value Legit':      { V1:1.19,V2:0.26,V3:0.16,V4:0.45,V5:-0.07,V6:-0.18,V7:0.09,V8:0.08,V9:-0.26,V10:-0.17,V11:0.03,V12:0.14,V13:-0.07,V14:0.10,V15:0.05,V16:-0.02,V17:-0.06,V18:0.08,V19:-0.12,V20:0.10,V21:-0.01,V22:0.05,V23:-0.02,V24:0.01,V25:0.02,V26:-0.04,V27:0.01,V28:-0.01,Amount:8500.00,Time:75000 },
 }
 
-const defaultFeatures = () => { const f: any = {}; for(let i=1;i<=28;i++) f[`V${i}`]=0; f.Amount=100; f.Time=50000; return f }
+const defaultFeatures = () => ({ ...PRESETS['Normal Transaction'] })
 
 export default function PredictPage() {
   const { t, dark } = useTheme()
@@ -30,7 +30,7 @@ export default function PredictPage() {
       const data = res.data
       setAnimating(true)
       setTimeout(() => { setResult(data); setAnimating(false); toast(data.is_fraud ? '🚨 Fraud Detected!' : '✅ Legitimate', data.is_fraud ? 'error' : 'success') }, 600)
-    } catch { toast('Prediction failed', 'error') }
+    } catch (err: any) { toast(err.response?.data?.detail || 'Prediction failed', 'error') }
     finally { setLoading(false) }
   }
 

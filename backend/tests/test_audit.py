@@ -154,14 +154,18 @@ async def test_audit_prediction_and_transaction_events(client: AsyncClient, monk
     monkeypatch.setattr(process_batch, "delay", lambda *args, **kwargs: MockTask())
     monkeypatch.setattr(process_batch_file, "delay", lambda *args, **kwargs: MockTask())
 
-    # 1. Register and login admin
-    await client.post("/api/auth/register", json={
-        "email": "admin_audit@example.com",
-        "username": "admin_audit",
-        "full_name": "Admin Audit",
-        "password": "admin_pass123",
-        "role": "admin",
-    })
+    # 1. Create and login admin
+    from services.auth_service import hash_password
+    async with AsyncSessionLocal() as db:
+        admin_u = User(
+            email="admin_audit@example.com",
+            username="admin_audit",
+            full_name="Admin Audit",
+            hashed_password=hash_password("admin_pass123"),
+            role=UserRole.admin
+        )
+        db.add(admin_u)
+        await db.commit()
     login_resp = await client.post("/api/auth/login", data={
         "username": "admin_audit",
         "password": "admin_pass123",
@@ -295,18 +299,29 @@ def test_websocket_audit_events():
 @pytest.mark.asyncio
 async def test_admin_audit_logs_endpoint_security_and_pagination(client: AsyncClient):
     """Test RBAC blocks unauthenticated/analysts/customers and allows admin with pagination checks."""
-    # 1. Register users
+    # 1. Register users (Admin via DB, others via API)
+    from services.auth_service import hash_password
+    async with AsyncSessionLocal() as db:
+        admin_u = User(
+            email="admin_ep@example.com",
+            username="admin_ep",
+            full_name="Admin EP",
+            hashed_password=hash_password("Pass1234"),
+            role=UserRole.admin
+        )
+        db.add(admin_u)
+        await db.commit()
+
     users = [
-        {"email": "admin_ep@example.com", "username": "admin_ep", "full_name": "Admin EP", "password": "pass", "role": "admin"},
-        {"email": "analyst_ep@example.com", "username": "analyst_ep", "full_name": "Analyst EP", "password": "pass", "role": "analyst"},
-        {"email": "customer_ep@example.com", "username": "customer_ep", "full_name": "Customer EP", "password": "pass", "role": "customer"},
+        {"email": "analyst_ep@example.com", "username": "analyst_ep", "full_name": "Analyst EP", "password": "Pass1234", "role": "analyst"},
+        {"email": "customer_ep@example.com", "username": "customer_ep", "full_name": "Customer EP", "password": "Pass1234", "role": "customer"},
     ]
     for u in users:
         await client.post("/api/auth/register", json=u)
 
     # Helper to get auth headers / cookies for role
     async def get_cookies_for(username):
-        resp = await client.post("/api/auth/login", data={"username": username, "password": "pass"})
+        resp = await client.post("/api/auth/login", data={"username": username, "password": "Pass1234"})
         assert resp.status_code == 200
         return resp.cookies.get("access_token")
 
@@ -354,15 +369,19 @@ async def test_admin_audit_logs_endpoint_security_and_pagination(client: AsyncCl
 @pytest.mark.asyncio
 async def test_audit_endpoint_uuid_validation(client: AsyncClient):
     """Verify that an invalid UUID in actor_user_id returns 400 Bad Request."""
-    # 1. Login admin
-    await client.post("/api/auth/register", json={
-        "email": "admin_uuid_check@example.com",
-        "username": "admin_uuid_check",
-        "full_name": "Admin UUID Check",
-        "password": "pass",
-        "role": "admin",
-    })
-    login_resp = await client.post("/api/auth/login", data={"username": "admin_uuid_check", "password": "pass"})
+    # 1. Create and login admin
+    from services.auth_service import hash_password
+    async with AsyncSessionLocal() as db:
+        admin_u = User(
+            email="admin_uuid_check@example.com",
+            username="admin_uuid_check",
+            full_name="Admin UUID Check",
+            hashed_password=hash_password("Pass1234"),
+            role=UserRole.admin
+        )
+        db.add(admin_u)
+        await db.commit()
+    login_resp = await client.post("/api/auth/login", data={"username": "admin_uuid_check", "password": "Pass1234"})
     assert login_resp.status_code == 200
     token = login_resp.cookies.get("access_token")
 
@@ -419,10 +438,10 @@ async def test_audit_write_failure_does_not_rollback_business_transaction(client
         "email": "analyst_rollback_check@example.com",
         "username": "analyst_rollback_check",
         "full_name": "Analyst Rollback Check",
-        "password": "pass",
+        "password": "Pass1234_Check",
         "role": "analyst",
     })
-    login_resp = await client.post("/api/auth/login", data={"username": "analyst_rollback_check", "password": "pass"})
+    login_resp = await client.post("/api/auth/login", data={"username": "analyst_rollback_check", "password": "Pass1234_Check"})
     assert login_resp.status_code == 200
     csrf_token = login_resp.cookies.get("csrf_token")
     headers = {"x-csrf-token": csrf_token}

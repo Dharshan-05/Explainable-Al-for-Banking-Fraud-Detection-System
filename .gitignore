@@ -73,4 +73,6 @@ mlruns/
 
 # Large ML data files
 ml_training/data/*.csv
-
+backend/creditcard.csv
+backend/uploads/
+uploads/
