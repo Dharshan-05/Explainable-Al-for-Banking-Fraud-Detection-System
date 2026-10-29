@@ -4,6 +4,7 @@
 .env.development.local
 .env.test.local
 .env.production.local
+.env.staging
 
 # Python cache and build outputs
 __pycache__/
@@ -70,6 +71,8 @@ mlruns/
 # Database files
 *.db
 *.sqlite3
+celerybeat-schedule*
+backend/celerybeat-schedule*
 
 # Large ML data files
 ml_training/data/*.csv
