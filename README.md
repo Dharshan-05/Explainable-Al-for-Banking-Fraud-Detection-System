@@ -1,10 +1,6 @@
 # 🛡️ FraudGuard XAI — Real-Time Explainable AI Banking Fraud Detection System
 
 <p align="center">
-  <img src="screenshots/dashboard.png" alt="FraudGuard XAI Dashboard" width="100%" />
-</p>
-
-<p align="center">
   <strong>An enterprise-grade, role-based banking fraud intelligence and real-time monitoring platform powered by XGBoost, SHAP explainability, FastAPI, Next.js 14, Celery, and PostgreSQL.</strong>
 </p>
 
@@ -33,7 +29,7 @@
 - [Executive Overview](#-executive-overview)
 - [System Architecture & Data Flow](#-system-architecture--data-flow)
 - [Key Features & Capabilities](#-key-features--capabilities)
-- [UI & Explainability Showcase](#-ui--explainability-showcase)
+- [Analyst Portal & UI Workspaces](#-analyst-portal--ui-workspaces)
 - [Technology Stack Matrix](#-technology-stack-matrix)
 - [Machine Learning & XAI Pipeline](#-machine-learning--xai-pipeline)
 - [Comprehensive REST & WebSocket API](#-comprehensive-rest--websocket-api)
@@ -152,27 +148,18 @@ flowchart TD
 
 ---
 
-## 📸 UI & Explainability Showcase
+## 🖥️ Analyst Portal & UI Workspaces
 
-### 1. Analyst Operations Dashboard
-Real-time KPI metrics, 24-hour alert feed, and dynamic risk distribution charts.
-![Dashboard Screenshot](screenshots/dashboard.png)
+The Next.js 14 frontend provides dedicated workspaces tailored for fraud operations, compliance workflows, and real-time incident review:
 
-### 2. Single Transaction Prediction & Local SHAP Waterfall
-Interactive form input evaluating transaction features with instant Shapley contribution attributions.
-![SHAP Prediction Result](screenshots/shap_prediction.png)
-
-### 3. Transaction Monitoring & Auditor Review Console
-Live paginated tabular ledger supporting sorting, filtering, bulk status updates, and sanitized CSV exports.
-![Transaction Monitoring](screenshots/transactions_monitor.png)
-
-### 4. Analytics & Risk Intelligence
-30-day temporal trend charts, fraud volume breakdown, and risk distribution analysis powered by Recharts.
-![Analytics Overview](screenshots/analytics.png)
-
-### 5. Role-Protected Login Portal
-Secure JWT authentication portal with rate-limiting protection against brute-force attacks.
-![Authentication Portal](screenshots/login.png)
+| Workspace | Route | Capabilities & Operational Workflow |
+| :--- | :--- | :--- |
+| **Risk Operations Dashboard** | `/dashboard` | Real-time KPI summaries, 24-hour alert feed, and dynamic risk distribution charts. |
+| **Explainable Prediction Form** | `/predict` | Interactive transaction simulation with real-time risk scoring and local SHAP contribution waterfall. |
+| **Batch CSV Ingestion Console** | `/predict` | File upload supporting massive transaction batches with live Celery progress tracking. |
+| **Transaction Monitoring** | `/transactions` | Paginated transaction ledger, multi-criteria filtering, auditor notes, and status reviews. |
+| **Risk Analytics & Trends** | `/analytics` | 30-day temporal trend charts, volume analysis, and fraud distribution metrics. |
+| **Authentication & RBAC Portal** | `/login` | Secure JWT authentication with role-based routing and rate-limiting protection. |
 
 ---
 
